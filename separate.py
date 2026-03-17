@@ -8,6 +8,7 @@ from typing import List, Tuple, Union, Dict
 
 from demucs.pretrained import get_model
 from demucs.apply import apply_model
+import audio_utils
 
 
 class AudioSeparator:
@@ -45,12 +46,8 @@ class AudioSeparator:
         Returns:
             torch.Tensor: Tensor du waveform prêt pour Demucs de forme (batch, channels, time).
         """
-        # Chargement et resampling forcé à 44100 Hz
-        waveform, _ = librosa.load(str(file_path), sr=self.sample_rate, mono=False)
-        
-        # Si le fichier est mono, on rajoute une dimension pour avoir (channels, time)
-        if waveform.ndim == 1:
-            waveform = np.expand_dims(waveform, axis=0)
+        # Utilisation de audio_utils pour charger et forcer en stéréo
+        waveform, _ = audio_utils.load_audio(file_path, sr=self.sample_rate, force_stereo=True)
             
         # Conversion en Tensor PyTorch et ajout de la dimension batch: attendu (1, channels, time)
         waveform_tensor = torch.tensor(waveform).float().unsqueeze(0).to(self.device)
@@ -90,12 +87,7 @@ class AudioSeparator:
         for source_tensor, name in zip(sources, self.model.sources):
             out_path = out_dir / f"{original_file_name}_{name}.wav"
             
-            # soundfile attend un array (time, channels), d'où le .T
-            sf.write(
-                str(out_path),
-                source_tensor.cpu().numpy().T,
-                self.sample_rate,
-            )
+            audio_utils.save_audio(out_path, source_tensor.cpu().numpy(), sr=self.sample_rate)
             saved_paths.append(out_path)
             
         return saved_paths
@@ -174,11 +166,7 @@ class AudioSeparator:
                 file_name = f"{input_file.stem}_{name}.wav"
                 out_path = out_dir / file_name
                 
-                sf.write(
-                    str(out_path),
-                    source_tensor.cpu().numpy().T,
-                    self.sample_rate,
-                )
+                audio_utils.save_audio(out_path, source_tensor.cpu().numpy(), sr=self.sample_rate)
                 
                 with open(out_path, "rb") as f:
                     audio_bytes = f.read()

@@ -7,13 +7,9 @@ import torch
 import librosa
 import soundfile as sf
 
-from demucs.pretrained import get_model
-from demucs.apply import apply_model
+from separate import AudioSeparator
 
 
-# CORRECTION 1 : désactive le file watcher de Streamlit pour torch
-# Évite le RuntimeError "Tried to instantiate class '__path__._path'"
-# causé par l'incompatibilité entre le watcher Streamlit et torch._classes
 st.set_page_config(
     page_title="Séparation audio avec Demucs",
     layout="wide",
@@ -21,24 +17,20 @@ st.set_page_config(
 st.title("🎵 Séparation audio en stems avec Demucs")
 
 
-# CORRECTION 2 : gestion explicite du device CUDA/CPU
+
 @st.cache_resource
-def load_demucs_model(model_name: str = "htdemucs"):
-    model = get_model(model_name)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model.to(device)
-    # logger.info("Modèle {} chargé sur {}", model_name, device)
-    return model, device
+def get_audio_separator(model_name: str = "htdemucs"):
+    return AudioSeparator(model_name=model_name)
 
 
 def separate_audio(
     input_file_path: Path,
     output_dir: Path,
     model_name: str,
-) -> list[tuple[str, bytes]]:
+) -> list[tuple[str, bytes, str]]:
     """
-    Retourne une liste de (stem_name, audio_bytes) au lieu de chemins fichiers.
-    CORRECTION 3 : on lit les bytes EN MÉMOIRE avant que le tmpdir soit détruit.
+    Retourne une liste de (stem_name, audio_bytes, nom_fichier) au lieu de chemins fichiers.
+    Utilise la classe AudioSeparator pour faciliter l'intégration et factoriser le code.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -48,45 +40,26 @@ def separate_audio(
     # Chargement du modèle
     status_text.info("⏳ Chargement du modèle Demucs...")
     progress_bar.progress(10)
-    model, device = load_demucs_model(model_name)
+    separator = get_audio_separator(model_name)
 
-    # CORRECTION 4 : forcer sr=44100 Hz — Demucs attend impérativement ce SR.
-    # Sans ça, un fichier à 48000 Hz ou 22050 Hz donnera une séparation incorrecte.
-    status_text.info("⏳ Chargement et resampling de l'audio à 44100 Hz...")
-    waveform, sr = librosa.load(str(input_file_path), sr=44100, mono=False)
-    #logger.info("SR forcé à 44100 Hz (SR original ignoré)")
 
-    if waveform.ndim == 1:
-        waveform = np.expand_dims(waveform, axis=0)  # (1, time) si mono
+    status_text.info("⏳ Chargement et resampling de l'audio...")
+    waveform_tensor = separator.load_audio(input_file_path)
 
-    # Demucs attend (batch, channels, time)
-    waveform_tensor = torch.tensor(waveform).float().unsqueeze(0).to(device)
     progress_bar.progress(35)
-    #logger.info(
-    #    "Audio chargé : {} ({} Hz, {} canaux)",
-    #    input_file_path.name,
-    #    sr,
-    #    waveform_tensor.shape[1],
-    #)
+    
     # Séparation
     status_text.info("🎧 Séparation en stems en cours...")
-    with torch.no_grad():
-        sources = apply_model(model, waveform_tensor)[0]  # (stems, channels, time)
+    sources = separator.separate(waveform_tensor)
+    
     progress_bar.progress(80)
-    #logger.info("Séparation terminée : {} stems extraits", sources.shape[0])
 
     # Sauvegarde + lecture en mémoire immédiate
-    status_text.info("💾 Sauvegarde des stems...")
-    output_files: list[tuple[str, bytes]] = []
-
-    for source_tensor, name in zip(sources, model.sources):
-        out_path = output_dir / f"{input_file_path.stem}_{name}.wav"
-        sf.write(
-            str(out_path),
-            source_tensor.cpu().numpy().T,  # (time, channels)
-            sr,
-        )
-        # CORRECTION 3 (suite) : lecture immédiate en bytes pendant que le fichier existe
+    status_text.info("💾 Sauvegarde et préparation des stems...")
+    saved_paths = separator.save_stems(sources, input_file_path.stem, output_dir)
+    
+    output_files = []
+    for name, out_path in zip(separator.model.sources, saved_paths):
         with open(out_path, "rb") as f:
             audio_bytes = f.read()
         output_files.append((name, audio_bytes, out_path.name))
@@ -98,8 +71,6 @@ def separate_audio(
 
 
 # --- UI ---
-
-# CORRECTION 5 : sélecteur de modèle exposé à l'utilisateur
 model_choice = st.selectbox(
     "Modèle Demucs",
     options=["htdemucs", "htdemucs_ft", "mdx_extra", "mdx_extra_q"],
