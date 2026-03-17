@@ -17,3 +17,14 @@
 ### Limite
 - Les musiques sont **déjà mixées** (pas de stems : vocals / drums / bass / other)
 - Donc **pas adapté** pour entraîner un modèle de séparation ou faire de l’évaluation scientifique
+
+
+
+## Application 
+
+Pour lancer l'application, installer les dépendances avec `pip install -r requirements.txt` et lancer la commande suivante :
+
+```bash
+streamlit run app.py --server.fileWatcherType none
+```
+
