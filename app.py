@@ -1,14 +1,8 @@
 import streamlit as st
 from pathlib import Path
-import tempfile
-import shutil
-import numpy as np
-import torch
-import librosa
-import soundfile as sf
 
-from separate import AudioSeparator
-
+# Import depuis le package structuré
+from src.music_separation import AudioSeparator, CacheManager
 
 st.set_page_config(
     page_title="Séparation audio avec Demucs",
@@ -16,45 +10,31 @@ st.set_page_config(
 )
 st.title("🎵 Séparation audio en stems avec Demucs")
 
-
-
 @st.cache_resource
 def get_audio_separator(model_name: str = "htdemucs"):
     return AudioSeparator(model_name=model_name)
-
 
 def separate_audio(
     input_file_path: Path,
     output_dir: Path,
     model_name: str,
 ) -> list[tuple[str, bytes, str]]:
-    """
-    Retourne une liste de (stem_name, audio_bytes, nom_fichier) au lieu de chemins fichiers.
-    Utilise la classe AudioSeparator pour faciliter l'intégration et factoriser le code.
-    """
     output_dir.mkdir(parents=True, exist_ok=True)
-
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    # Chargement du modèle
     status_text.info("⏳ Chargement du modèle Demucs...")
     progress_bar.progress(10)
     separator = get_audio_separator(model_name)
 
-
     status_text.info("⏳ Chargement et resampling de l'audio...")
     waveform_tensor = separator.load_audio(input_file_path)
-
     progress_bar.progress(35)
     
-    # Séparation
     status_text.info("🎧 Séparation en stems en cours...")
     sources = separator.separate(waveform_tensor)
-    
     progress_bar.progress(80)
 
-    # Sauvegarde + lecture en mémoire immédiate
     status_text.info("💾 Sauvegarde et préparation des stems...")
     saved_paths = separator.save_stems(sources, input_file_path.stem, output_dir)
     
@@ -68,7 +48,6 @@ def separate_audio(
     status_text.success("✅ Séparation terminée !")
 
     return output_files
-
 
 # --- UI ---
 model_choice = st.selectbox(
@@ -87,36 +66,29 @@ if uploaded_file is not None:
     st.audio(uploaded_file)
 
     if st.button("Lancer la séparation"):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp_path = Path(tmpdir)
-            input_path = tmp_path / uploaded_file.name
-            output_dir = tmp_path / "output"
-
-            with open(input_path, "wb") as f:
-                f.write(uploaded_file.read())
+        # Utilisation du CacheManager pour isoler la complexité de tempfile / shutil
+        with CacheManager() as cm:
+            input_path = cm.write_uploaded_file(uploaded_file)
+            output_dir = cm.create_output_dir("output")
 
             try:
                 output_files = separate_audio(input_path, output_dir, model_choice)
 
-                # CORRECTION 3 (suite) : le tmpdir est encore ouvert ici,
-                # mais on a déjà tout lu en mémoire → pas de risque.
-
                 st.subheader("🎼 Résultats")
                 cols = st.columns(2)
 
-                # Construction du zip en mémoire avant de quitter le with
-                zip_base = tmp_path / "stems_archive"
-                archive_path = shutil.make_archive(str(zip_base), "zip", output_dir)
+                # Création de l'archive ZIP propement par le CacheManager
+                archive_path = cm.create_zip_archive(output_dir, "stems_archive")
                 with open(archive_path, "rb") as f:
                     zip_bytes = f.read()
 
             except Exception as e:
                 st.error(f"Erreur pendant la séparation : {e}")
-                #logger.exception("Erreur de séparation")
                 output_files = []
                 zip_bytes = None
 
-        # Hors du with tmpdir : on utilise uniquement les bytes déjà lus
+        # Hors du bloc CacheManager : les fichiers tempos sont supprimés
+        # mais on exploite l'audio entièrement lu en mémoire
         if output_files:
             cols = st.columns(2)
             for i, (stem_name, audio_bytes, filename) in enumerate(output_files):
