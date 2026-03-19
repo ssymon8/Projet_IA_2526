@@ -1,18 +1,39 @@
+import warnings
 import numpy as np
 import librosa
 import soundfile as sf
 from typing import Union, List, Tuple
 from pathlib import Path
 
+# Formats supportés nativement par soundfile (pas besoin d'audioread)
+_SF_FORMATS = {'.wav', '.flac', '.ogg', '.aiff', '.aif'}
+
 def load_audio(path: Union[str, Path], sr: int = 44100, mono: bool = False, force_stereo: bool = False) -> Tuple[np.ndarray, int]:
-    """Charge un fichier audio."""
-    audio, loaded_sr = librosa.load(str(path), sr=sr, mono=mono)
-    
+    """Charge un fichier audio (soundfile pour WAV/FLAC, librosa pour MP3/M4A)."""
+    path = Path(path)
+    ext = path.suffix.lower()
+
+    if ext in _SF_FORMATS:
+        # Lecture directe via soundfile : rapide, sans warning
+        audio, loaded_sr = sf.read(str(path), always_2d=True)
+        audio = audio.T  # (channels, time)
+        if loaded_sr != sr:
+            audio = librosa.resample(audio, orig_sr=loaded_sr, target_sr=sr)
+            loaded_sr = sr
+        if mono:
+            audio = np.mean(audio, axis=0)
+    else:
+        # Fallback librosa pour MP3, M4A, MP4, etc. — on supprime les warnings dépréciés
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning)
+            warnings.filterwarnings("ignore", category=FutureWarning)
+            audio, loaded_sr = librosa.load(str(path), sr=sr, mono=mono)
+
     if force_stereo and audio.ndim == 1:
         audio = to_stereo(audio)
     elif not mono and not force_stereo and audio.ndim == 1:
         audio = np.expand_dims(audio, axis=0)
-        
+
     return audio, loaded_sr
 
 def save_audio(path: Union[str, Path], audio: np.ndarray, sr: int = 44100):

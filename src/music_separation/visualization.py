@@ -1,3 +1,4 @@
+import io
 import numpy as np
 import librosa
 import librosa.display
@@ -18,6 +19,38 @@ class Visualizer:
         """Charge spécifiquement en mono pour la visualisation."""
         audio, _ = load_audio(path, sr=self.sample_rate, mono=True)
         return audio
+
+    def _audio_array_to_mono(self, audio_bytes: bytes) -> np.ndarray:
+        """Charge des bytes audio et les convertit en array mono."""
+        buf = io.BytesIO(audio_bytes)
+        y, _ = librosa.load(buf, sr=self.sample_rate, mono=True)
+        return y
+
+    def _render_spectrogram(self, y: np.ndarray, title: str) -> bytes:
+        """Génère un spectrogramme à partir d'un array audio et le retourne en PNG bytes."""
+        fig, ax = plt.subplots(figsize=(12, 4))
+        D = librosa.stft(y)
+        S_db = librosa.amplitude_to_db(np.abs(D), ref=np.max)
+        img = librosa.display.specshow(S_db, sr=self.sample_rate, x_axis='time', y_axis='log', ax=ax, cmap='magma')
+        ax.set_title(f"Spectrogramme : {title}")
+        fig.colorbar(img, ax=ax, format="%+2.0f dB")
+        plt.tight_layout()
+
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=150)
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
+
+    def spectrogram_from_path(self, path: Union[str, Path], title: str) -> bytes:
+        """Génère un spectrogramme depuis un fichier audio et retourne les bytes PNG."""
+        y = self.load_mono(path)
+        return self._render_spectrogram(y, title)
+
+    def spectrogram_from_bytes(self, audio_bytes: bytes, title: str) -> bytes:
+        """Génère un spectrogramme depuis des bytes audio et retourne les bytes PNG."""
+        y = self._audio_array_to_mono(audio_bytes)
+        return self._render_spectrogram(y, title)
 
     def plot_spectrograms(self, audio_paths_dict: Dict[str, Union[str, Path]], output_path: Union[str, Path] = None):
         """
