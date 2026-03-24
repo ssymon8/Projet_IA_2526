@@ -267,7 +267,7 @@ def plot_metrics_bar_per_stem(
 
     for i, model in enumerate(models):
         vals = metrics_per_model[model].get(metric_name, np.zeros(n_stems))
-        if isinstance(vals, np.ndarray):
+        if isinstance(vals, (np.ndarray, list, tuple)):
             vals = [float(v) if not np.isnan(v) else 0.0 for v in vals]
         else:
             vals = [float(vals)] * n_stems
@@ -641,7 +641,7 @@ def plot_sdr_evolution_summary(
     width = 0.8 / len(models)
     for i, m in enumerate(models):
         sdr_arr = all_results[m].get("SDR", np.zeros(len(stem_names)))
-        if isinstance(sdr_arr, np.ndarray) and len(sdr_arr) >= len(stem_names):
+        if isinstance(sdr_arr, (np.ndarray, list, tuple)) and len(sdr_arr) >= len(stem_names):
             vals = [float(v) for v in sdr_arr[:len(stem_names)]]
         else:
             vals = [0.0] * len(stem_names)
