@@ -6,6 +6,7 @@ from .evaluate import AudioEvaluator
 from .visualization import Visualizer
 from .benchmark import run_benchmark
 from .compare import compare_models_on_track
+from . import analysis_tools
 
 from . import audio_utils
 
@@ -17,5 +18,6 @@ __all__ = [
     "Visualizer",
     "run_benchmark",
     "compare_models_on_track",
+    "analysis_tools",
     "audio_utils"
 ]
