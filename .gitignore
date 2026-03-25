@@ -212,5 +212,6 @@ __marimo__/
 /datasets/
 /output/
 /outputs/
-/dataset/musdb18hq/
-
+/dataset/
+/Rapport/
+#/experiments/output_demucs_comparison/
