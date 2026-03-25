@@ -213,3 +213,6 @@ __marimo__/
 /datasets/
 /output/
 /outputs/
+/dataset/
+/Rapport/
+#/experiments/output_demucs_comparison/
