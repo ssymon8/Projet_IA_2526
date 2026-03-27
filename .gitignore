@@ -213,3 +213,11 @@ __marimo__/
 /datasets/
 /output/
 /outputs/
+/dataset/
+/Rapport/
+#/experiments/output_demucs_comparison/
+musique_simon_dataset_clean_1/
+musique_simon_dataset_clean_1.zip
+musique_simon_projet/
+musique_simon_stems_clean/
+demucs/
